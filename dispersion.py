@@ -769,7 +769,6 @@ class DispersionQEP:
             return ret
 
         def addValue(vec, l, o):
-
             f.append(o)
             k.append((self.param_px.Get()+l*self.param_sx.Get(), self.param_py.Get()+l*self.param_sy.Get()))
             if calculate_residual:
@@ -899,11 +898,38 @@ class DispersionQEP:
         if nval == None:
             nval = round(tmp/5)
 
-        n_initial_omega = 2
-        while not self.Qred:
-            omega_rb = np.sort([zones[i_zones_start]['params'][i] for i in random.sample(range(len(zones[i_zones_start]['params'])), n_initial_omega)])
-            self.BuildRB(omega_rb, zones[i_zones_start]['ps'], lrange=zones[i_zones_start]['lrange'])
-            n_initial_omega += 1
+
+        for i1 in range(len(zones[i_zones_start]['params'])):
+            tmp = self.CalculateValuesFull([zones[i_zones_start]['params'][i1]], zones[i_zones_start]['ps'], lrange=zones[i_zones_start]['lrange'])
+            if len(tmp['f']) > 0:
+                break 
+        if i1 < len(zones[i_zones_start]['params'])-1:
+            for i2 in range(i1, len(zones[i_zones_start]['params']))[::-1]:
+                tmp = self.CalculateValuesFull([zones[i_zones_start]['params'][i2]], zones[i_zones_start]['ps'], lrange=zones[i_zones_start]['lrange'])
+                if len(tmp['f']) > 0:
+                    break 
+        else:
+            print("no RB space was built try with less restrictions on lambda") 
+            self.Qred = None
+            return
+        
+        if i1 == i2:
+            print("no RB space was built try with less restrictions on lambda") 
+            self.Qred = None
+            return
+        
+        omega_rb = [zones[i_zones_start]['params'][i1],zones[i_zones_start]['params'][i2]]
+        self.BuildRB(omega_rb, zones[i_zones_start]['ps'], lrange=zones[i_zones_start]['lrange'])
+
+        # n_initial_omega = 2
+        # while not self.Qred:
+        #     omega_rb = np.sort([zones[i_zones_start]['params'][i] for i in random.sample(range(len(zones[i_zones_start]['params'])), n_initial_omega)])
+        #     self.BuildRB(omega_rb, zones[i_zones_start]['ps'], lrange=zones[i_zones_start]['lrange'])
+        #     # n_initial_omega += 1
+        #     cnt += 1
+        #     if cnt > tmp:
+        #         print("no RB space was built") 
+        #         return 
 
         if self.logging:
             print("dim of initial reduced space: ", len(self.Qred))
@@ -934,8 +960,9 @@ class DispersionQEP:
                     omega_val = np.sort([zones[i]['params'][j] for j in random.sample(range(len(zones[i]['params'])), n_val)])
                     zones[i]['values'] = self.CalculateValues(omega_val, zones[i]['ps'], lrange=zones[i]['lrange'], calculate_residual=True)
                     cnt += 1
-                    if cnt > 5:
-                        print("no RB space was built") 
+                    if cnt > 15:
+                        print("no RB space was built, try with biger 'nval' or less restrictions on lambda") 
+                        self.Qred = None
                         return 
 
                 residual = zones[i]['values']['res']
@@ -1008,13 +1035,10 @@ class DispersionQEP:
             params = np.linspace(min_omega, max_omega, nparam)
 
         if buildRB and useRB:
-            tmp = self.th_imag
-            self.th_imag = 1e-14
             begin_time = time.time()
             self.GreedyRB(ps, lrange, params= params, th_res=th_res, nval = nval)
             times['offline'] = time.time()-begin_time
             print("RB space of dimension {} built in {} seconds".format(len(self.Qred), times['offline']))
-            self.th_imag = tmp
 
         res_mean = []
         res_min = []
@@ -1141,20 +1165,23 @@ class DispersionQEP:
                 return
             
             # create zones
-            zones = [None]*nzones
+            # zones = [None]*nzones
             ky = lambda i: k_min+i*(k_max-k_min)/nzones
+            lrange = [(0,k_max-k_min)]
+            ps = []
             for i in range(nzones):
-                zones[i] = {'ps': [k_min,ky(i),1,0], 'k_comp': 0, 'lrange': [(0,k_max-k_min)]}    
+                ps.append([k_min,ky(i),1,0])
+                # zones[i] = {'ps': [k_min,ky(i),1,0], 'k_comp': 0, 'lrange': [(0,k_max-k_min)]}    
             
             if buildRB:
-                self.GreedyRB(zones=zones, params=params)
+                self.GreedyRB(ps, lrange, params=params)
                 print("RB space of dim {} built".format(len(self.Qred)))
             
             values = [None]*nzones
             for i in range(nzones):
-                print("Calculating zone {}/{} with ky = {}".format(i+1, nzones, zones[i]['ps'][1]))
-                values[i] = self.CalculateValues(params, ps=zones[i]['ps'], lrange=zones[i]['lrange'])
-            val_srt = SortIntoBands(values, k_ind=[zone['k_comp'] for zone in zones], plot = plot)
+                print("Calculating zone {}/{} with ky = {}".format(i+1, nzones, ps[i][1]))
+                values[i] = self.CalculateValues(params, ps=ps[i], lrange=lrange)
+            val_srt = SortIntoBands(values, k_ind=[0]*nzones, plot = plot)
         else:
             nzones = len(val_srt)
             ky = lambda i: k_min+i*(k_max-k_min)/nzones
@@ -1802,9 +1829,9 @@ class DispersionGEP:
             # plt.yscale('log')
             # plt.show()
 
-        res = {'min': np.min(values['res']), 'mean': np.mean(values['res']), 'max': np.max(values['res'])}
+        # res = {'min': np.min(values['res']), 'mean': np.mean(values['res']), 'max': np.max(values['res'])}
         print("min residual: {:.2e}, mean residual: {:.2e}, max residual: {:.2e}".format(np.min(values['res']), np.mean(values['res']), np.max(values['res'])))
-        return values, times, res
+        return values, times #, res
     
     def ChernNumber_FPC(self, nbands, ngrid, values = None, full = False, buildRB = False, plot = False, prefix = ''):
 

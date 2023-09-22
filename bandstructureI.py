@@ -6,9 +6,9 @@ from netgen.occ import *
 
 
 out = 'output/'
-th_res = 1e-3
+th_res = 1e-2
 maxh = 0.1
-order = 3
+order = 2
 nval = 50 
 nparam = 300 #3000
 
